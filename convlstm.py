@@ -7,7 +7,6 @@ class ConvLSTMCell(nn.Module):
     def __init__(self, input_dim, hidden_dim, kernel_size, bias):
         """
         Initialize ConvLSTM cell.
-
         Parameters
         ----------
         input_dim: int
@@ -28,7 +27,7 @@ class ConvLSTMCell(nn.Module):
         self.kernel_size = kernel_size
         self.padding = kernel_size[0] // 2, kernel_size[1] // 2
         self.bias = bias
-
+        #就是相对于普通的LSTM多了一个kernel_size的参数
         self.conv = nn.Conv2d(in_channels=self.input_dim + self.hidden_dim,
                               out_channels=4 * self.hidden_dim,
                               kernel_size=self.kernel_size,
@@ -37,11 +36,12 @@ class ConvLSTMCell(nn.Module):
 
     def forward(self, input_tensor, cur_state):
         h_cur, c_cur = cur_state
-
         combined = torch.cat([input_tensor, h_cur], dim=1)  # concatenate along channel axis
 
+        # 调用前面的convLSTM cell进行计算，最后分割再激活，算出next得所需数据，最后返回
         combined_conv = self.conv(combined)
         cc_i, cc_f, cc_o, cc_g = torch.split(combined_conv, self.hidden_dim, dim=1)
+        # 作用：对tensor在某一dim维度下，根据指定的大小split_size=int，或者list(int)来分割数据，返回tuple元组。
         i = torch.sigmoid(cc_i)
         f = torch.sigmoid(cc_f)
         o = torch.sigmoid(cc_o)
@@ -56,12 +56,12 @@ class ConvLSTMCell(nn.Module):
         height, width = image_size
         return (torch.zeros(batch_size, self.hidden_dim, height, width, device=self.conv.weight.device),
                 torch.zeros(batch_size, self.hidden_dim, height, width, device=self.conv.weight.device))
-
+# h0 = torch.randn(2, 3, 20) # 2：LSTM层数*方向 3：batch 20： 隐藏层节点数
+# c0 = torch.randn(2, 3, 20) # 同上
 
 class ConvLSTM(nn.Module):
 
     """
-
     Parameters:
         input_dim: Number of channels in input
         hidden_dim: Number of hidden channels
@@ -70,10 +70,9 @@ class ConvLSTM(nn.Module):
         batch_first: Whether or not dimension 0 is the batch or not
         bias: Bias or no bias in Convolution
         return_all_layers: Return the list of computations for all layers
-        Note: Will do same padding.
-
+        Note: Will do same padding.如果padding设置为SAME，则说明输入图片大小和输出图片大小是一致的
     Input:
-        A tensor of size B, T, C, H, W or T, B, C, H, W
+        A tensor of size B, T, C, H, W or T, B, C, H, W  T是序列数。T可以看作网络的横着方向的维度数
     Output:
         A tuple of two lists of length num_layers (or length 1 if return_all_layers is False).
             0 - layer_output_list is the list of lists of length T of each output
@@ -95,6 +94,10 @@ class ConvLSTM(nn.Module):
         # Make sure that both `kernel_size` and `hidden_dim` are lists having len == num_layers
         kernel_size = self._extend_for_multilayer(kernel_size, num_layers)
         hidden_dim = self._extend_for_multilayer(hidden_dim, num_layers)
+        print("kernel_size",len(kernel_size))
+        print(kernel_size)
+        print("hidden_dim",len(hidden_dim))
+        print(hidden_dim)
         if not len(kernel_size) == len(hidden_dim) == num_layers:
             raise ValueError('Inconsistent list length.')
 
@@ -110,6 +113,9 @@ class ConvLSTM(nn.Module):
         for i in range(0, self.num_layers):
             cur_input_dim = self.input_dim if i == 0 else self.hidden_dim[i - 1]
 
+            # 每一个layer的input_dim是一样的
+            # 同一个layer的kernel_size和hidden_dim是一样的
+            # 不同layer的kernel_size和hidden_dim可以不一样
             cell_list.append(ConvLSTMCell(input_dim=cur_input_dim,
                                           hidden_dim=self.hidden_dim[i],
                                           kernel_size=self.kernel_size[i],
@@ -119,14 +125,12 @@ class ConvLSTM(nn.Module):
 
     def forward(self, input_tensor, hidden_state=None):
         """
-
         Parameters
         ----------
         input_tensor: todo
             5-D Tensor either of shape (t, b, c, h, w) or (b, t, c, h, w)
         hidden_state: todo
             None. todo implement stateful
-
         Returns
         -------
         last_state_list, layer_output
@@ -187,5 +191,5 @@ class ConvLSTM(nn.Module):
     @staticmethod
     def _extend_for_multilayer(param, num_layers):
         if not isinstance(param, list):
-            param = [param] * num_layers
+            param = [param] * num_layers    # 比如num_layers = 2，但是参数只有一个就是16，所以转换成为了[16,16]对于kernel_size的tuple格式是一样的
         return param
